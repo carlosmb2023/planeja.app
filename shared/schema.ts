@@ -120,7 +120,15 @@ export const insertDocumentSchema = createInsertSchema(documents).omit({
 export const insertAssetSchema = createInsertSchema(assets).omit({
   id: true,
   createdAt: true,
+  updatedAt: true,
 });
+
+export const updateAssetSchema = createInsertSchema(assets).omit({
+  id: true,
+  userId: true,
+  createdAt: true,
+  updatedAt: true,
+}).partial();
 
 export const insertInsuranceSchema = createInsertSchema(insurances).omit({
   id: true,

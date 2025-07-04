@@ -17,7 +17,6 @@ import Education from "@/pages/education";
 import Assets from "@/pages/assets";
 import Insurances from "@/pages/insurances";
 import Reports from "@/pages/reports";
-import BankIntegration from "@/pages/bank-integration";
 import RetirementSimulator from "@/pages/retirement-simulator";
 import DatabaseSetup from "@/pages/database-setup";
 import PrivacySetup from "@/pages/privacy-setup";
@@ -37,7 +36,6 @@ function Router() {
       <Route path="/assets" component={Assets} />
       <Route path="/insurances" component={Insurances} />
       <Route path="/reports" component={Reports} />
-      <Route path="/bank-integration" component={BankIntegration} />
       <Route path="/retirement-simulator" component={RetirementSimulator} />
       <Route path="/database-setup" component={DatabaseSetup} />
       <Route path="/privacy-setup" component={PrivacySetup} />

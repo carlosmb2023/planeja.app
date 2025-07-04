@@ -9,6 +9,7 @@ import {
   insertTransactionSchema,
   insertRetirementGoalSchema,
   insertAssetSchema,
+  updateAssetSchema,
   insertDocumentSchema,
   insertInsuranceSchema
 } from "@shared/schema";
@@ -323,6 +324,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const asset = await storage.createAsset(assetData);
       res.status(201).json(asset);
     } catch (error) {
+      console.error('Error creating asset:', error);
+      if (error.name === 'ZodError') {
+        return res.status(400).json({ message: 'Dados inválidos', errors: error.errors });
+      }
       res.status(400).json({ message: 'Dados do ativo inválidos' });
     }
   });
@@ -330,7 +335,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.put('/api/assets/:id', authenticateToken, async (req: any, res) => {
     try {
       const assetId = parseInt(req.params.id);
-      const updates = req.body;
+      
+      // Validate update data
+      const updates = updateAssetSchema.parse(req.body);
       
       // Verify asset belongs to user
       const existingAsset = await storage.getAsset(assetId);
@@ -346,6 +353,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       res.json(asset);
     } catch (error) {
+      console.error('Error updating asset:', error);
+      if (error.name === 'ZodError') {
+        return res.status(400).json({ message: 'Dados inválidos', errors: error.errors });
+      }
       res.status(400).json({ message: 'Erro ao atualizar ativo' });
     }
   });
@@ -365,6 +376,108 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ message: 'Ativo removido com sucesso' });
     } catch (error) {
       res.status(500).json({ message: 'Erro ao remover ativo' });
+    }
+  });
+
+  app.get('/api/assets/categories', authenticateToken, async (req: any, res) => {
+    try {
+      const assets = await storage.getUserAssets(req.user.id);
+      
+      const categories = assets.reduce((acc: any, asset: any) => {
+        const type = asset.type || 'outro';
+        if (!acc[type]) {
+          acc[type] = {
+            type,
+            count: 0,
+            totalValue: 0,
+            assets: []
+          };
+        }
+        acc[type].count++;
+        acc[type].totalValue += parseFloat(asset.value || 0);
+        acc[type].assets.push(asset);
+        return acc;
+      }, {});
+
+      res.json(Object.values(categories));
+    } catch (error) {
+      res.status(500).json({ message: 'Erro ao buscar categorias de ativos' });
+    }
+  });
+
+  app.get('/api/assets/statistics', authenticateToken, async (req: any, res) => {
+    try {
+      const assets = await storage.getUserAssets(req.user.id);
+      
+      const totalValue = assets.reduce((sum: number, asset: any) => sum + parseFloat(asset.value || 0), 0);
+      const activeAssets = assets.filter((asset: any) => asset.isActive !== false);
+      const totalAssets = assets.length;
+      
+      const categoryStats = assets.reduce((acc: any, asset: any) => {
+        const type = asset.type || 'outro';
+        if (!acc[type]) {
+          acc[type] = { count: 0, value: 0 };
+        }
+        acc[type].count++;
+        acc[type].value += parseFloat(asset.value || 0);
+        return acc;
+      }, {});
+
+      const mostValuableAsset = assets.reduce((max: any, asset: any) => 
+        parseFloat(asset.value || 0) > parseFloat(max?.value || 0) ? asset : max, null);
+
+      res.json({
+        totalValue,
+        totalAssets,
+        activeAssets: activeAssets.length,
+        categoryStats,
+        mostValuableAsset,
+        averageValue: totalAssets > 0 ? totalValue / totalAssets : 0
+      });
+    } catch (error) {
+      res.status(500).json({ message: 'Erro ao buscar estatísticas de ativos' });
+    }
+  });
+
+  app.post('/api/assets/:id/calculate-depreciation', authenticateToken, async (req: any, res) => {
+    try {
+      const assetId = parseInt(req.params.id);
+      const asset = await storage.getAsset(assetId);
+      
+      if (!asset || asset.userId !== req.user.id) {
+        return res.status(404).json({ message: 'Ativo não encontrado' });
+      }
+
+      const { depreciationRate, years } = req.body;
+      
+      if (!depreciationRate || !years) {
+        return res.status(400).json({ message: 'Taxa de depreciação e anos são obrigatórios' });
+      }
+
+      const originalValue = parseFloat(asset.value);
+      const rate = parseFloat(depreciationRate) / 100;
+      
+      // Calculate depreciation using straight-line method
+      const annualDepreciation = originalValue * rate;
+      const totalDepreciation = annualDepreciation * years;
+      const currentValue = Math.max(0, originalValue - totalDepreciation);
+      
+      // Update asset with calculated current value
+      await storage.updateAsset(assetId, {
+        currentValue: currentValue.toString(),
+        depreciationRate: depreciationRate.toString()
+      });
+
+      res.json({
+        originalValue,
+        currentValue,
+        totalDepreciation,
+        annualDepreciation,
+        years,
+        depreciationRate
+      });
+    } catch (error) {
+      res.status(500).json({ message: 'Erro ao calcular depreciação' });
     }
   });
 
