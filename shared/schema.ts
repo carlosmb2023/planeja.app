@@ -63,7 +63,12 @@ export const assets = pgTable("assets", {
   type: text("type").notNull(), // 'property', 'vehicle', 'investment', etc.
   value: decimal("value", { precision: 12, scale: 2 }).notNull(),
   description: text("description"),
+  purchaseDate: timestamp("purchase_date"),
+  depreciationRate: decimal("depreciation_rate", { precision: 5, scale: 2 }),
+  currentValue: decimal("current_value", { precision: 12, scale: 2 }),
+  isActive: boolean("is_active").default(true).notNull(),
   createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
 });
 
 export const insurances = pgTable("insurances", {

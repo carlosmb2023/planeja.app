@@ -14,7 +14,6 @@ import {
 } from "@shared/schema";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import { BankIntegrationService, BANK_CONFIGS, BRAZILIAN_BANKS, type BankConnection, type BankAccount } from './bankIntegration';
 
 const JWT_SECRET = process.env.JWT_SECRET || "planeja-secret-key";
 
@@ -328,6 +327,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.put('/api/assets/:id', authenticateToken, async (req: any, res) => {
+    try {
+      const assetId = parseInt(req.params.id);
+      const updates = req.body;
+      
+      // Verify asset belongs to user
+      const existingAsset = await storage.getAsset(assetId);
+      if (!existingAsset || existingAsset.userId !== req.user.id) {
+        return res.status(404).json({ message: 'Ativo não encontrado' });
+      }
+      
+      const asset = await storage.updateAsset(assetId, updates);
+      
+      if (!asset) {
+        return res.status(404).json({ message: 'Ativo não encontrado' });
+      }
+      
+      res.json(asset);
+    } catch (error) {
+      res.status(400).json({ message: 'Erro ao atualizar ativo' });
+    }
+  });
+
+  app.delete('/api/assets/:id', authenticateToken, async (req: any, res) => {
+    try {
+      const assetId = parseInt(req.params.id);
+      
+      // Verify asset belongs to user
+      const existingAsset = await storage.getAsset(assetId);
+      if (!existingAsset || existingAsset.userId !== req.user.id) {
+        return res.status(404).json({ message: 'Ativo não encontrado' });
+      }
+      
+      await storage.deleteAsset(assetId);
+      
+      res.json({ message: 'Ativo removido com sucesso' });
+    } catch (error) {
+      res.status(500).json({ message: 'Erro ao remover ativo' });
+    }
+  });
+
   // Documents
   app.get('/api/documents', authenticateToken, async (req: any, res) => {
     try {
@@ -487,6 +527,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ message: 'Erro ao deletar arquivo' });
     }
   });
+
+  const httpServer = createServer(app);
+  return httpServer;
+}
 
   // Bank Integration Routes
   const bankConnections: BankConnection[] = [];

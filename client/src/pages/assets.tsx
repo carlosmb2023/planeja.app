@@ -7,18 +7,23 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Link } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { authManager } from "@/lib/auth";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import BottomNavigation from "@/components/bottom-navigation";
+import { Plus, Building, Car, TrendingUp, DollarSign, Edit, Trash2, MoreVertical, ArrowLeft, Home } from "lucide-react";
 
 export default function Assets() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [isAssetModalOpen, setIsAssetModalOpen] = useState(false);
   const [isHeirModalOpen, setIsHeirModalOpen] = useState(false);
+  const [editingAsset, setEditingAsset] = useState(null);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
   const { data: assets = [], isLoading: isAssetsLoading } = useQuery({
     queryKey: ["/api/assets"],
@@ -44,6 +49,57 @@ export default function Assets() {
       });
     },
   });
+
+  const updateAssetMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: number; data: any }) => {
+      return apiRequest(`/api/assets/${id}`, "PUT", data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/assets"] });
+      setIsEditModalOpen(false);
+      setEditingAsset(null);
+      toast({
+        title: "Bem atualizado com sucesso!",
+        description: "As informações do bem foram atualizadas.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Erro ao atualizar bem",
+        description: "Ocorreu um erro ao atualizar o bem. Tente novamente.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const deleteAssetMutation = useMutation({
+    mutationFn: async (id: number) => {
+      return apiRequest(`/api/assets/${id}`, "DELETE");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/assets"] });
+      toast({
+        title: "Bem removido com sucesso!",
+        description: "O bem foi removido da sua lista de patrimônio.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Erro ao remover bem",
+        description: "Ocorreu um erro ao remover o bem. Tente novamente.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleEditAsset = (asset: any) => {
+    setEditingAsset(asset);
+    setIsEditModalOpen(true);
+  };
+
+  const handleDeleteAsset = (assetId: number) => {
+    deleteAssetMutation.mutate(assetId);
+  };
 
   const totalAssetValue = assets.reduce((sum: number, asset: any) => sum + parseFloat(asset.value || 0), 0);
 
@@ -145,6 +201,7 @@ export default function Assets() {
                         type: formData.get('type'),
                         value: formData.get('value'),
                         purchaseDate: formData.get('purchaseDate'),
+                        description: formData.get('description'),
                       });
                     }} className="space-y-4">
                       <div>
@@ -172,6 +229,10 @@ export default function Assets() {
                       <div>
                         <Label htmlFor="purchaseDate">Data de Aquisição</Label>
                         <Input id="purchaseDate" name="purchaseDate" type="date" />
+                      </div>
+                      <div>
+                        <Label htmlFor="description">Descrição</Label>
+                        <Input id="description" name="description" />
                       </div>
                       <Button type="submit" className="w-full">Cadastrar</Button>
                     </form>
@@ -210,9 +271,41 @@ export default function Assets() {
                             </p>
                           </div>
                         </div>
-                        <Button variant="ghost" size="sm">
-                          <Edit className="h-4 w-4" />
-                        </Button>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="sm">
+                              <MoreVertical className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => handleEditAsset(asset)}>
+                              <Edit className="h-4 w-4 mr-2" />
+                              Editar
+                            </DropdownMenuItem>
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
+                                  <Trash2 className="h-4 w-4 mr-2" />
+                                  Excluir
+                                </DropdownMenuItem>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>Confirmar exclusão</AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    Tem certeza que deseja excluir "{asset.name}"? Esta ação não pode ser desfeita.
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                  <AlertDialogAction onClick={() => handleDeleteAsset(asset.id)}>
+                                    Excluir
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </div>
                     ))}
                   </div>
@@ -390,6 +483,63 @@ export default function Assets() {
           </TabsContent>
         </Tabs>
       </main>
+
+      {/* Edit Asset Dialog */}
+      <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Editar Bem</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={(e) => {
+            e.preventDefault();
+            const formData = new FormData(e.currentTarget);
+            updateAssetMutation.mutate({
+              id: editingAsset?.id,
+              data: {
+                name: formData.get('name'),
+                type: formData.get('type'),
+                value: formData.get('value'),
+                purchaseDate: formData.get('purchaseDate'),
+                description: formData.get('description'),
+              }
+            });
+          }} className="space-y-4">
+            <div>
+              <Label htmlFor="edit-name">Nome do Bem</Label>
+              <Input id="edit-name" name="name" defaultValue={editingAsset?.name} required />
+            </div>
+            <div>
+              <Label htmlFor="edit-type">Tipo</Label>
+              <Select name="type" defaultValue={editingAsset?.type} required>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione o tipo" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="imovel">Imóvel</SelectItem>
+                  <SelectItem value="veiculo">Veículo</SelectItem>
+                  <SelectItem value="investimento">Investimento</SelectItem>
+                  <SelectItem value="outro">Outro</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor="edit-value">Valor Estimado</Label>
+              <Input id="edit-value" name="value" type="number" step="0.01" defaultValue={editingAsset?.value} required />
+            </div>
+            <div>
+              <Label htmlFor="edit-purchaseDate">Data de Aquisição</Label>
+              <Input id="edit-purchaseDate" name="purchaseDate" type="date" defaultValue={editingAsset?.purchaseDate?.split('T')[0]} />
+            </div>
+            <div>
+              <Label htmlFor="edit-description">Descrição</Label>
+              <Input id="edit-description" name="description" defaultValue={editingAsset?.description} />
+            </div>
+            <Button type="submit" className="w-full" disabled={updateAssetMutation.isPending}>
+              {updateAssetMutation.isPending ? "Atualizando..." : "Atualizar"}
+            </Button>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       <BottomNavigation />
     </div>
