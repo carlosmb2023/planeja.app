@@ -1,6 +1,8 @@
 import React from 'react';
 import { ArrowLeft, Sparkles } from 'lucide-react';
 import { Link } from 'wouter';
+import { ThemeToggle } from './theme-toggle';
+import { NotificationBell } from './notification-system';
 
 interface ModernHeaderProps {
   title: string;
@@ -68,6 +70,8 @@ export default function ModernHeader({
           </div>
           
           <div className="flex items-center space-x-3">
+            <NotificationBell />
+            <ThemeToggle />
             {actionButton}
           </div>
         </div>

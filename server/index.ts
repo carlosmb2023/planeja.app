@@ -50,21 +50,45 @@ app.use((req, res, next) => {
   // importantly only setup vite in development and after
   // setting up all the other routes so the catch-all route
   // doesn't interfere with the other routes
-  if (app.get("env") === "development") {
+  const isDevelopment = process.env.NODE_ENV === "development" || 
+                       app.get("env") === "development" ||
+                       !process.env.NODE_ENV;
+  
+  if (isDevelopment) {
+    log("Setting up Vite dev server...");
     await setupVite(app, server);
   } else {
-    serveStatic(app);
+    log("Setting up static file serving...");
+    try {
+      serveStatic(app);
+    } catch (error) {
+      log(`Error setting up static files: ${error.message}`);
+      log("Falling back to Vite dev server...");
+      await setupVite(app, server);
+    }
   }
 
   // ALWAYS serve the app on port 5000
   // this serves both the API and the client.
   // It is the only port that is not firewalled.
   const port = 5000;
-  server.listen({
-    port,
-    host: "0.0.0.0",
-    reusePort: true,
-  }, () => {
-    log(`serving on port ${port}`);
-  });
+  
+  // Use localhost for development (Windows compatibility), 0.0.0.0 for production
+  const host = isDevelopment ? "localhost" : "0.0.0.0";
+  
+  if (isDevelopment) {
+    // For Windows development, use simple listen with only port
+    server.listen(port, "localhost", () => {
+      log(`serving on localhost:${port}`);
+    });
+  } else {
+    // For production, use full options
+    server.listen({
+      port,
+      host,
+      reusePort: true,
+    }, () => {
+      log(`serving on ${host}:${port}`);
+    });
+  }
 })();

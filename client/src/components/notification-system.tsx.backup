@@ -1,0 +1,705 @@
+/**
+ * Sistema de Notificações In-App - Versão Completa
+ * 
+ * Gerencia notificações em tempo real dentro da aplicação
+ */
+
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { useQuery } from "@tanstack/react-query";
+import { authManager } from "@/lib/auth";
+import { Bell, X, AlertTriangle, Info, CheckCircle, AlertCircle } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { cn } from '@/lib/utils';
+import { format, parseISO, differenceInDays } from "date-fns";
+import { ptBR } from "date-fns/locale";
+
+export interface Notification {
+  id: string;
+  title: string;
+  message: string;
+  type: 'info' | 'success' | 'warning' | 'error';
+  category: 'system' | 'financial' | 'security' | 'insurance' | 'goal' | 'bank';
+  priority: 'low' | 'medium' | 'high';
+  read: boolean;
+  actionUrl?: string;
+  actionLabel?: string;
+  createdAt: Date;
+  expiresAt?: Date;
+  metadata?: Record<string, any>;
+}
+
+interface NotificationContextType {
+  notifications: Notification[];
+  unreadCount: number;
+  addNotification: (notification: Omit<Notification, 'id' | 'read' | 'createdAt'>) => void;
+  markAsRead: (id: string) => void;
+  markAllAsRead: () => void;
+  removeNotification: (id: string) => void;
+  clearAll: () => void;
+  getNotificationsByCategory: (category: string) => Notification[];
+}
+
+const NotificationContext = createContext<NotificationContextType | undefined>(undefined);
+
+export function NotificationProvider({ children }: { children: React.ReactNode }) {
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+
+  const addNotification = useCallback((notification: Omit<Notification, 'id' | 'read' | 'createdAt'>) => {
+    const newNotification: Notification = {
+      ...notification,
+      id: `notif_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      read: false,
+      createdAt: new Date()
+    };
+
+    setNotifications(prev => [newNotification, ...prev]);
+
+    // Auto-remover notificações expiradas
+    if (newNotification.expiresAt) {
+      const timeUntilExpiry = newNotification.expiresAt.getTime() - Date.now();
+      if (timeUntilExpiry > 0) {
+        setTimeout(() => {
+          removeNotification(newNotification.id);
+        }, timeUntilExpiry);
+      }
+    }
+  }, []);
+
+  const markAsRead = useCallback((id: string) => {
+    setNotifications(prev => 
+      prev.map(notif => 
+        notif.id === id ? { ...notif, read: true } : notif
+      )
+    );
+  }, []);
+
+  const markAllAsRead = useCallback(() => {
+    setNotifications(prev => 
+      prev.map(notif => ({ ...notif, read: true }))
+    );
+  }, []);
+
+  const removeNotification = useCallback((id: string) => {
+    setNotifications(prev => prev.filter(notif => notif.id !== id));
+  }, []);
+
+  const clearAll = useCallback(() => {
+    setNotifications([]);
+  }, []);
+
+  const getNotificationsByCategory = useCallback((category: string) => {
+    return notifications.filter(notif => notif.category === category);
+  }, [notifications]);
+
+  const unreadCount = notifications.filter(notif => !notif.read).length;
+
+  // Limpar notificações expiradas
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const now = new Date();
+      setNotifications(prev => 
+        prev.filter(notif => !notif.expiresAt || notif.expiresAt > now)
+      );
+    }, 60000); // Verificar a cada minuto
+
+    return () => clearInterval(interval);
+  }, []);
+
+  return (
+    <NotificationContext.Provider value={{
+      notifications,
+      unreadCount,
+      addNotification,
+      markAsRead,
+      markAllAsRead,
+      removeNotification,
+      clearAll,
+      getNotificationsByCategory
+    }}>
+      {children}
+    </NotificationContext.Provider>
+  );
+}
+
+export function useNotifications() {
+  const context = useContext(NotificationContext);
+  if (context === undefined) {
+    throw new Error('useNotifications must be used within a NotificationProvider');
+  }
+  return context;
+}
+
+// Componente para gerar notificações automáticas baseadas em dados
+function AutoNotificationGenerator() {
+  const { addNotification } = useNotifications();
+
+  const { data: insurances = [] } = useQuery({
+    queryKey: ["/api/insurances"],
+    queryFn: async () => {
+      const response = await fetch("/api/insurances", {
+        headers: authManager.getAuthHeader(),
+      });
+      if (!response.ok) return [];
+      return response.json();
+    },
+  });
+
+  const { data: retirementGoal } = useQuery({
+    queryKey: ["/api/retirement/goal"],
+    queryFn: async () => {
+      const response = await fetch("/api/retirement/goal", {
+        headers: authManager.getAuthHeader(),
+      });
+      if (!response.ok) return null;
+      return response.json();
+    },
+  });
+
+  // Gerar notificações baseadas em dados
+  useEffect(() => {
+    // Verificar seguros próximos do vencimento
+    insurances.forEach((insurance: any) => {
+      if (insurance.isActive && insurance.endDate) {
+        const endDate = parseISO(insurance.endDate);
+        const daysUntilExpiry = differenceInDays(endDate, new Date());
+        
+        if (daysUntilExpiry <= 30 && daysUntilExpiry > 0) {
+          addNotification({
+            title: "Seguro próximo do vencimento",
+            message: `Seu ${insurance.type} vence em ${daysUntilExpiry} dias`,
+            type: daysUntilExpiry <= 7 ? 'error' : 'warning',
+            category: 'insurance',
+            priority: daysUntilExpiry <= 7 ? 'high' : 'medium',
+            actionUrl: '/insurances',
+            actionLabel: 'Ver Seguros'
+          });
+        }
+      }
+    });
+
+    // Verificar progresso da aposentadoria
+    if (retirementGoal) {
+      const currentAmount = parseFloat(retirementGoal.currentAmount);
+      const targetAmount = parseFloat(retirementGoal.targetAmount);
+      const percentage = (currentAmount / targetAmount) * 100;
+      
+      if (percentage >= 25 && percentage < 50) {
+        addNotification({
+          title: "25% da meta de aposentadoria alcançada!",
+          message: `Você já poupou R$ ${currentAmount.toLocaleString('pt-BR')} para aposentadoria`,
+          type: 'success',
+          category: 'goal',
+          priority: 'medium',
+          actionUrl: '/goals',
+          actionLabel: 'Ver Metas'
+        });
+      } else if (percentage >= 50 && percentage < 75) {
+        addNotification({
+          title: "Metade do caminho percorrido!",
+          message: `Parabéns! Você já alcançou 50% da sua meta de aposentadoria`,
+          type: 'success',
+          category: 'goal',
+          priority: 'medium',
+          actionUrl: '/goals',
+          actionLabel: 'Ver Progresso'
+        });
+      } else if (percentage >= 75) {
+        addNotification({
+          title: "Quase lá! 75% da meta alcançada",
+          message: `Faltam apenas 25% para atingir sua meta de aposentadoria`,
+          type: 'success',
+          category: 'goal',
+          priority: 'high',
+          actionUrl: '/retirement-simulator',
+          actionLabel: 'Simular Cenários'
+        });
+      }
+    }
+  }, [insurances, retirementGoal, addNotification]);
+
+  return null;
+}
+
+// Componente de Bell de Notificações
+export function NotificationBell() {
+  const { notifications, unreadCount, markAsRead, removeNotification, markAllAsRead } = useNotifications();
+  const [isOpen, setIsOpen] = useState(false);
+
+  const getIcon = (type: Notification['type']) => {
+    switch (type) {
+      case 'success':
+        return <CheckCircle className="h-4 w-4 text-green-500" />;
+      case 'warning':
+        return <AlertTriangle className="h-4 w-4 text-yellow-500" />;
+      case 'error':
+        return <AlertCircle className="h-4 w-4 text-red-500" />;
+      default:
+        return <Info className="h-4 w-4 text-blue-500" />;
+    }
+  };
+
+  const formatTime = (date: Date) => {
+    const now = new Date();
+    const diff = now.getTime() - date.getTime();
+    const minutes = Math.floor(diff / 60000);
+    const hours = Math.floor(diff / 3600000);
+    const days = Math.floor(diff / 86400000);
+
+    if (minutes < 1) return 'Agora';
+    if (minutes < 60) return `${minutes}m`;
+    if (hours < 24) return `${hours}h`;
+    return `${days}d`;
+  };
+
+  return (
+    <>
+      <AutoNotificationGenerator />
+      <div className="relative">
+        <Button
+          variant="outline"
+          size="icon"
+          className="relative h-9 w-9"
+          onClick={() => setIsOpen(!isOpen)}
+        >
+          <Bell className="h-4 w-4" />
+          {unreadCount > 0 && (
+            <Badge 
+              variant="destructive" 
+              className="absolute -top-1 -right-1 h-5 w-5 rounded-full p-0 text-xs"
+            >
+              {unreadCount > 99 ? '99+' : unreadCount}
+            </Badge>
+          )}
+        </Button>
+
+        {isOpen && (
+          <div className="absolute right-0 top-12 z-50 w-96 bg-white rounded-lg shadow-lg border dark:bg-gray-800 dark:border-gray-700">
+            <div className="p-4 border-b flex items-center justify-between">
+              <h3 className="font-semibold">Notificações</h3>
+              <div className="flex items-center gap-2">
+                {unreadCount > 0 && (
+                  <Button 
+                    variant="ghost" 
+                    size="sm"
+                    onClick={markAllAsRead}
+                  >
+                    Marcar todas como lidas
+                  </Button>
+                )}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6"
+                  onClick={() => setIsOpen(false)}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+
+            <ScrollArea className="max-h-96">
+              {notifications.length === 0 ? (
+                <div className="p-4 text-center text-muted-foreground">
+                  Nenhuma notificação
+                </div>
+              ) : (
+                <div className="p-2">
+                  {notifications.map((notification) => (
+                    <Card 
+                      key={notification.id}
+                      className={cn(
+                        "mb-2 cursor-pointer hover:bg-muted/50 transition-colors",
+                        !notification.read && "border-primary/50 bg-primary/5"
+                      )}
+                      onClick={() => {
+                        markAsRead(notification.id);
+                        if (notification.actionUrl) {
+                          window.location.href = notification.actionUrl;
+                        }
+                      }}
+                    >
+                      <CardContent className="p-3">
+                        <div className="flex items-start gap-3">
+                          {getIcon(notification.type)}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1">
+                              <h4 className="font-medium text-sm truncate">
+                                {notification.title}
+                              </h4>
+                              {!notification.read && (
+                                <div className="h-2 w-2 bg-primary rounded-full" />
+                              )}
+                            </div>
+                            <p className="text-sm text-muted-foreground mb-2">
+                              {notification.message}
+                            </p>
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <Badge variant="outline" className="text-xs">
+                                  {notification.category}
+                                </Badge>
+                                <span className="text-xs text-muted-foreground">
+                                  {formatTime(notification.createdAt)}
+                                </span>
+                              </div>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  removeNotification(notification.id);
+                                }}
+                              >
+                                <X className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </ScrollArea>
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
+
+// Hook para criar notificações facilmente
+export function useNotificationActions() {
+  const { addNotification } = useNotifications();
+
+  const showSuccess = (title: string, message: string, options?: Partial<Notification>) => {
+    addNotification({
+      title,
+      message,
+      type: 'success',
+      category: 'system',
+      priority: 'medium',
+      ...options
+    });
+  };
+
+  const showError = (title: string, message: string, options?: Partial<Notification>) => {
+    addNotification({
+      title,
+      message,
+      type: 'error',
+      category: 'system',
+      priority: 'high',
+      ...options
+    });
+  };
+
+  const showWarning = (title: string, message: string, options?: Partial<Notification>) => {
+    addNotification({
+      title,
+      message,
+      type: 'warning',
+      category: 'system',
+      priority: 'medium',
+      ...options
+    });
+  };
+
+  const showInfo = (title: string, message: string, options?: Partial<Notification>) => {
+    addNotification({
+      title,
+      message,
+      type: 'info',
+      category: 'system',
+      priority: 'low',
+      ...options
+    });
+  };
+
+  const showInsuranceExpiry = (insuranceName: string, daysLeft: number) => {
+    addNotification({
+      title: 'Seguro vencendo',
+      message: `Seu seguro ${insuranceName} vence em ${daysLeft} dias`,
+      type: 'warning',
+      category: 'insurance',
+      priority: 'high',
+      actionUrl: '/insurances',
+      actionLabel: 'Ver Seguros'
+    });
+  };
+
+  const showGoalMilestone = (goalName: string, percentage: number) => {
+    addNotification({
+      title: 'Meta alcançada!',
+      message: `Você alcançou ${percentage}% da meta ${goalName}`,
+      type: 'success',
+      category: 'goal',
+      priority: 'medium',
+      actionUrl: '/goals',
+      actionLabel: 'Ver Metas'
+    });
+  };
+
+  return {
+    showSuccess,
+    showError,
+    showWarning,
+    showInfo,
+    showInsuranceExpiry,
+    showGoalMilestone
+  };
+}
+
+// Componente de Bell de Notificações
+    if (insurances.length > 0) {
+      const today = new Date();
+      insurances.forEach((insurance: any) => {
+        if (!insurance.isActive) return;
+        
+        const endDate = new Date(insurance.endDate);
+        const diffTime = endDate.getTime() - today.getTime();
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        
+        if (diffDays <= insurance.notificationDays && diffDays > 0) {
+          newNotifications.push({
+            id: `insurance-${insurance.id}`,
+            type: 'warning',
+            title: 'Seguro próximo do vencimento',
+            message: `Seu seguro ${insurance.type} com a ${insurance.insurer} vence em ${diffDays} dias (${format(endDate, "dd/MM/yyyy", { locale: ptBR })}).`,
+            isRead: false,
+            createdAt: new Date().toISOString(),
+            actionUrl: '/insurances'
+          });
+        } else if (diffDays <= 0) {
+          newNotifications.push({
+            id: `insurance-expired-${insurance.id}`,
+            type: 'warning',
+            title: 'Seguro vencido',
+            message: `Seu seguro ${insurance.type} com a ${insurance.insurer} venceu em ${format(endDate, "dd/MM/yyyy", { locale: ptBR })}. Renove urgentemente!`,
+            isRead: false,
+            createdAt: new Date().toISOString(),
+            actionUrl: '/insurances'
+          });
+        }
+      });
+    }
+
+    // Verificar meta de aposentadoria
+    if (retirementGoal) {
+      const progress = (parseFloat(retirementGoal.currentAmount) / parseFloat(retirementGoal.targetAmount)) * 100;
+      
+      if (progress >= 25 && progress < 30) {
+        newNotifications.push({
+          id: 'retirement-25',
+          type: 'info',
+          title: 'Meta de Aposentadoria - 25%',
+          message: `Parabéns! Você já atingiu 25% da sua meta de aposentadoria. Continue poupando!`,
+          isRead: false,
+          createdAt: new Date().toISOString(),
+          actionUrl: '/goals'
+        });
+      } else if (progress >= 50 && progress < 55) {
+        newNotifications.push({
+          id: 'retirement-50',
+          type: 'success',
+          title: 'Meta de Aposentadoria - 50%',
+          message: `Excelente! Você já atingiu metade da sua meta de aposentadoria!`,
+          isRead: false,
+          createdAt: new Date().toISOString(),
+          actionUrl: '/goals'
+        });
+      } else if (progress >= 75 && progress < 80) {
+        newNotifications.push({
+          id: 'retirement-75',
+          type: 'success',
+          title: 'Meta de Aposentadoria - 75%',
+          message: `Fantástico! Você está muito próximo da sua meta de aposentadoria!`,
+          isRead: false,
+          createdAt: new Date().toISOString(),
+          actionUrl: '/goals'
+        });
+      }
+    }
+
+    // Adicionar notificações educacionais
+    const lastEducationNotification = localStorage.getItem('lastEducationNotification');
+    const today = new Date().toDateString();
+    
+    if (lastEducationNotification !== today) {
+      newNotifications.push({
+        id: 'education-tip',
+        type: 'info',
+        title: 'Dica Educacional',
+        message: 'Que tal completar um módulo de educação financeira hoje? Conhecimento é a base para decisões financeiras inteligentes!',
+        isRead: false,
+        createdAt: new Date().toISOString(),
+        actionUrl: '/education'
+      });
+      localStorage.setItem('lastEducationNotification', today);
+    }
+
+    setNotifications(newNotifications);
+  }, [insurances, retirementGoal]);
+
+  const markAsRead = (notificationId: string) => {
+    setNotifications(prev => 
+      prev.map(notif => 
+        notif.id === notificationId 
+          ? { ...notif, isRead: true }
+          : notif
+      )
+    );
+  };
+
+  const markAllAsRead = () => {
+    setNotifications(prev => 
+      prev.map(notif => ({ ...notif, isRead: true }))
+    );
+  };
+
+  const removeNotification = (notificationId: string) => {
+    setNotifications(prev => 
+      prev.filter(notif => notif.id !== notificationId)
+    );
+  };
+
+  const unreadCount = notifications.filter(n => !n.isRead).length;
+
+  const getNotificationIcon = (type: string) => {
+    switch (type) {
+      case 'warning': return AlertTriangle;
+      case 'success': return CheckCircle;
+      default: return Info;
+    }
+  };
+
+  const getNotificationColor = (type: string) => {
+    switch (type) {
+      case 'warning': return 'text-yellow-600 bg-yellow-50 border-yellow-200';
+      case 'success': return 'text-green-600 bg-green-50 border-green-200';
+      default: return 'text-blue-600 bg-blue-50 border-blue-200';
+    }
+  };
+
+  return (
+    <Dialog open={isOpen} onOpenChange={setIsOpen}>
+      <DialogTrigger asChild>
+        <Button variant="ghost" size="sm" className="relative">
+          <Bell className="h-5 w-5 text-gray-400" />
+          {unreadCount > 0 && (
+            <Badge 
+              variant="destructive" 
+              className="absolute -top-1 -right-1 px-1 min-w-[18px] h-4 text-xs"
+            >
+              {unreadCount}
+            </Badge>
+          )}
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+        <DialogHeader>
+          <div className="flex items-center justify-between">
+            <DialogTitle className="flex items-center gap-2">
+              <Bell className="h-5 w-5" />
+              Notificações
+              {unreadCount > 0 && (
+                <Badge variant="secondary">{unreadCount} não lidas</Badge>
+              )}
+            </DialogTitle>
+            {unreadCount > 0 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={markAllAsRead}
+              >
+                Marcar todas como lidas
+              </Button>
+            )}
+          </div>
+        </DialogHeader>
+        
+        <div className="space-y-3">
+          {notifications.length === 0 ? (
+            <Card>
+              <CardContent className="p-8 text-center">
+                <Bell className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                <h3 className="text-lg font-medium text-gray-900 mb-2">
+                  Nenhuma notificação
+                </h3>
+                <p className="text-gray-600">
+                  Quando houver atualizações importantes, elas aparecerão aqui.
+                </p>
+              </CardContent>
+            </Card>
+          ) : (
+            notifications.map((notification) => {
+              const Icon = getNotificationIcon(notification.type);
+              const colorClass = getNotificationColor(notification.type);
+              
+              return (
+                <Card 
+                  key={notification.id} 
+                  className={`border ${notification.isRead ? 'opacity-60' : ''} ${colorClass}`}
+                >
+                  <CardContent className="p-4">
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-start space-x-3 flex-1">
+                        <Icon className="h-5 w-5 mt-0.5" />
+                        <div className="flex-1">
+                          <h4 className="font-semibold mb-1">
+                            {notification.title}
+                          </h4>
+                          <p className="text-sm mb-2">
+                            {notification.message}
+                          </p>
+                          <p className="text-xs opacity-70">
+                            {format(parseISO(notification.createdAt), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+                          </p>
+                          {notification.actionUrl && (
+                            <Button
+                              variant="link"
+                              size="sm"
+                              className="p-0 h-auto mt-2"
+                              onClick={() => {
+                                window.location.href = notification.actionUrl!;
+                                setIsOpen(false);
+                              }}
+                            >
+                              Ver detalhes →
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex gap-1">
+                        {!notification.isRead && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => markAsRead(notification.id)}
+                          >
+                            ✓
+                          </Button>
+                        )}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => removeNotification(notification.id)}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}

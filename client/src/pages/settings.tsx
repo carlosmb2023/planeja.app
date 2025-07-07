@@ -131,7 +131,7 @@ export default function Settings() {
 
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <Tabs defaultValue="profile" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="profile" className="flex items-center gap-2">
               <User className="h-4 w-4" />
               Perfil
@@ -140,12 +140,16 @@ export default function Settings() {
               <Bell className="h-4 w-4" />
               Notificações
             </TabsTrigger>
+            <TabsTrigger value="security" className="flex items-center gap-2">
+              <Shield className="h-4 w-4" />
+              Segurança
+            </TabsTrigger>
             <TabsTrigger value="preferences" className="flex items-center gap-2">
               <Palette className="h-4 w-4" />
               Preferências
             </TabsTrigger>
             <TabsTrigger value="privacy" className="flex items-center gap-2">
-              <Shield className="h-4 w-4" />
+              <Database className="h-4 w-4" />
               Privacidade
             </TabsTrigger>
           </TabsList>
@@ -319,6 +323,120 @@ export default function Settings() {
 
                 <Button onClick={saveSettings}>
                   Salvar Configurações
+                </Button>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Aba Segurança */}
+          <TabsContent value="security">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Shield className="h-5 w-5" />
+                  Configurações de Segurança
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <Label>Autenticação de Dois Fatores (2FA)</Label>
+                    <p className="text-sm text-gray-600">Adicione uma camada extra de segurança à sua conta</p>
+                  </div>
+                  <Button variant="outline" size="sm">
+                    Configurar 2FA
+                  </Button>
+                </div>
+
+                <Separator />
+
+                <div>
+                  <Label>Logout Automático</Label>
+                  <p className="text-sm text-gray-600 mb-2">Tempo em minutos para logout automático por inatividade</p>
+                  <Select 
+                    value={settings.autoLogout.toString()} 
+                    onValueChange={(value) => handleSettingsChange('autoLogout', parseInt(value))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="15">15 minutos</SelectItem>
+                      <SelectItem value="30">30 minutos</SelectItem>
+                      <SelectItem value="60">1 hora</SelectItem>
+                      <SelectItem value="120">2 horas</SelectItem>
+                      <SelectItem value="0">Nunca</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <Separator />
+
+                <div className="flex items-center justify-between">
+                  <div>
+                    <Label>Criptografia de Dados</Label>
+                    <p className="text-sm text-gray-600">Manter dados financeiros criptografados</p>
+                  </div>
+                  <Switch
+                    checked={settings.dataEncryption}
+                    onCheckedChange={(checked) => handleSettingsChange('dataEncryption', checked)}
+                  />
+                </div>
+
+                <Separator />
+
+                <div className="space-y-2">
+                  <Label>Alterar Senha</Label>
+                  <Button variant="outline" className="w-full">
+                    Trocar Senha
+                  </Button>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Sessões Ativas</Label>
+                  <Button variant="outline" className="w-full">
+                    Gerenciar Sessões
+                  </Button>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Testar Notificações</Label>
+                  <Button 
+                    variant="outline" 
+                    className="w-full"
+                    onClick={async () => {
+                      try {
+                        const response = await fetch('/api/notifications/test-email', {
+                          method: 'POST',
+                          headers: {
+                            'Authorization': `Bearer ${authManager.getToken()}`,
+                            'Content-Type': 'application/json'
+                          }
+                        });
+                        
+                        if (response.ok) {
+                          toast({
+                            title: "Email enviado!",
+                            description: "Verifique sua caixa de entrada.",
+                          });
+                        } else {
+                          throw new Error('Erro ao enviar email');
+                        }
+                      } catch (error) {
+                        toast({
+                          title: "Erro",
+                          description: "Não foi possível enviar o email de teste.",
+                          variant: "destructive"
+                        });
+                      }
+                    }}
+                  >
+                    Testar Email
+                  </Button>
+                </div>
+
+                <Button onClick={saveSettings}>
+                  Salvar Configurações de Segurança
                 </Button>
               </CardContent>
             </Card>
