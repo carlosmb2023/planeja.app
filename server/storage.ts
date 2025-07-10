@@ -61,6 +61,9 @@ export interface IStorage {
   // Assets
   getUserAssets(userId: number): Promise<Asset[]>;
   createAsset(asset: InsertAsset): Promise<Asset>;
+  updateAsset(id: number, updates: Partial<InsertAsset>): Promise<Asset | undefined>;
+  deleteAsset(id: number): Promise<void>;
+  getAsset(id: number): Promise<Asset | undefined>;
   
   // Insurances
   getUserInsurances(userId: number): Promise<Insurance[]>;
@@ -369,10 +372,36 @@ export class MemStorage implements IStorage {
       ...insertAsset, 
       id,
       description: insertAsset.description ?? null,
-      createdAt: new Date()
+      purchaseDate: insertAsset.purchaseDate ?? null,
+      depreciationRate: insertAsset.depreciationRate ?? null,
+      currentValue: insertAsset.currentValue ?? null,
+      isActive: insertAsset.isActive ?? true,
+      createdAt: new Date(),
+      updatedAt: new Date()
     };
     this.assets.set(id, asset);
     return asset;
+  }
+
+  async updateAsset(id: number, updates: Partial<InsertAsset>): Promise<Asset | undefined> {
+    const asset = this.assets.get(id);
+    if (!asset) return undefined;
+    
+    const updatedAsset: Asset = {
+      ...asset,
+      ...updates,
+      updatedAt: new Date()
+    };
+    this.assets.set(id, updatedAsset);
+    return updatedAsset;
+  }
+
+  async deleteAsset(id: number): Promise<void> {
+    this.assets.delete(id);
+  }
+
+  async getAsset(id: number): Promise<Asset | undefined> {
+    return this.assets.get(id);
   }
 
   async getUserInsurances(userId: number): Promise<Insurance[]> {

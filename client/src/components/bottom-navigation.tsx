@@ -9,6 +9,7 @@ export default function BottomNavigation() {
     { icon: "📊", label: "Análises", path: "/analytics" },
     { icon: "🎯", label: "Metas", path: "/goals" },
     { icon: "🛡️", label: "Seguros", path: "/insurances" },
+    { icon: "🏘️", label: "Patrimônio", path: "/assets" },
   ];
 
   return (
