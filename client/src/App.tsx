@@ -5,6 +5,8 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { authManager } from "@/lib/auth";
 import { useState, useEffect } from "react";
+import { ThemeProvider } from "@/hooks/use-theme";
+import { NotificationProvider } from "@/components/notification-system";
 import Login from "@/pages/login";
 import Register from "@/pages/register";
 import Dashboard from "@/pages/dashboard";
@@ -20,6 +22,7 @@ import Reports from "@/pages/reports";
 import RetirementSimulator from "@/pages/retirement-simulator";
 import DatabaseSetup from "@/pages/database-setup";
 import PrivacySetup from "@/pages/privacy-setup";
+import TestFeatures from "@/pages/test-features";
 import NotFound from "@/pages/not-found";
 import { DatabaseCheck } from "@/components/database-check";
 
@@ -39,6 +42,7 @@ function Router() {
       <Route path="/retirement-simulator" component={RetirementSimulator} />
       <Route path="/database-setup" component={DatabaseSetup} />
       <Route path="/privacy-setup" component={PrivacySetup} />
+      <Route path="/test-features" component={TestFeatures} />
       <Route path="/login" component={(props) => <Login onLogin={() => window.location.reload()} />} />
       <Route path="/register" component={(props) => <Register onRegister={() => window.location.reload()} />} />
       <Route component={NotFound} />
@@ -48,14 +52,16 @@ function Router() {
 
 function AuthenticatedApp() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <Toaster />
-        <DatabaseCheck>
-          <Router />
-        </DatabaseCheck>
-      </TooltipProvider>
-    </QueryClientProvider>
+    <NotificationProvider>
+      <QueryClientProvider client={queryClient}>
+        <TooltipProvider>
+          <Toaster />
+          <DatabaseCheck>
+            <Router />
+          </DatabaseCheck>
+        </TooltipProvider>
+      </QueryClientProvider>
+    </NotificationProvider>
   );
 }
 
@@ -74,16 +80,22 @@ function App() {
 
   if (!isAuthenticated) {
     return (
-      <QueryClientProvider client={queryClient}>
-        <TooltipProvider>
-          <Toaster />
-          <Login onLogin={() => setIsAuthenticated(true)} />
-        </TooltipProvider>
-      </QueryClientProvider>
+      // <ThemeProvider>
+        <QueryClientProvider client={queryClient}>
+          <TooltipProvider>
+            <Toaster />
+            <Login onLogin={() => setIsAuthenticated(true)} />
+          </TooltipProvider>
+        </QueryClientProvider>
+      // </ThemeProvider>
     );
   }
 
-  return <AuthenticatedApp />;
+  return (
+    // <ThemeProvider>
+      <AuthenticatedApp />
+    // </ThemeProvider>
+  );
 }
 
 export default App;
